@@ -1,7 +1,7 @@
 #include "Expressions.h"
 #include <QBuffer>
 #include <ctype.h>
-#include <QDebug>
+#include <QDateTime>
 
 //----------------------------------------------------------------------
 //
@@ -13,7 +13,10 @@ Expressions::Expressions(QObject* parent) :
     m_DeviceLineNo(0),
     m_DeviceColumn(0),
     m_LineNo(0),
-    m_Column(0)
+    m_Column(0),
+    m_Abort(false),
+    m_AbortOnError(false),
+    m_ContinueOnError(false)
 {
 }
 
@@ -58,6 +61,7 @@ bool Expressions::parse(QIODevice* device)
     m_Device = device;
     m_LineNo = m_DeviceLineNo = 1;
     m_Column = m_DeviceColumn = 1;
+    m_Abort = false;
 
     return parse();
 }
@@ -191,9 +195,9 @@ bool Expressions::parseEOF()
 
     if (ch.ch != EOF)
     {
-        qDebug() << Q_FUNC_INFO << "Unexpected char at EOF: " << ch.ch;
+        notifyError(m_LineNo, m_Column, QString("Unexpected char at end: ").append(ch.ch));
         unread(ch);
-        return false;
+        return m_ContinueOnError;
     }
 
     return true;
@@ -209,12 +213,14 @@ bool Expressions::parseFactor()
     {
         if (!parseExpr())
         {
-            return false;
+            notifyError(m_LineNo, m_Column, "Missing expr when processing: factor ::= ( expr )");
+            return m_ContinueOnError;
         }
 
         if (!parseSymbol(')'))
         {
-            return false;
+            notifyError(m_LineNo, m_Column, "Missing ) when processing: factor ::= ( expr )");
+            return m_ContinueOnError;
         }
 
         return true;
@@ -227,7 +233,7 @@ bool Expressions::parseFactor()
         return true;
     }
 
-    return false;
+    return m_ContinueOnError;
 }
 
 //----------------------------------------------------------------------
@@ -238,7 +244,7 @@ bool Expressions::parseTerm()
 {
     if (!parseFactor())
     {
-        return false;
+        return m_ContinueOnError;
     }
 
     if (parseSymbol('*'))
@@ -246,7 +252,7 @@ bool Expressions::parseTerm()
         if (!parseTerm())
         {
             notifyError(m_LineNo, m_Column, "Missing term when processing: term ::= factor * term");
-            return false;
+            return m_ContinueOnError;
         }
 
         notifyElement("typeOperationMultiply");
@@ -258,7 +264,7 @@ bool Expressions::parseTerm()
         if (!parseTerm())
         {
             notifyError(m_LineNo, m_Column, "Missing term when processing: term ::= factor / term");
-            return false;
+            return m_ContinueOnError;
         }
 
         notifyElement("typeOperationDivide");
@@ -276,7 +282,7 @@ bool Expressions::parseExpr()
 {
     if (!parseTerm())
     {
-        return false;
+        return m_ContinueOnError;
     }
 
     if (parseSymbol('+'))
@@ -284,7 +290,7 @@ bool Expressions::parseExpr()
         if (!parseExpr())
         {
             notifyError(m_LineNo, m_Column, "Missing term when processing: expr ::= term + expr");
-            return false;
+            return m_ContinueOnError;
         }
 
         notifyElement("typeOperationAdd");
@@ -296,7 +302,7 @@ bool Expressions::parseExpr()
         if (!parseExpr())
         {
             notifyError(m_LineNo, m_Column, "Missing term when processing: expr ::= term - expr");
-            return false;
+            return m_ContinueOnError;
         }
 
         notifyElement("typeOperationSubtract");
@@ -317,17 +323,18 @@ bool Expressions::parse()
     m_Errors.clear();
     emit errorsChanged();
 
+    m_Stack.clear();
+
     if (!parseExpr())
     {
         notifyError(m_LineNo, m_Column, "Cannot identify expression");
-        qDebug() << m_Elements;
-        return false;
+        return m_ContinueOnError;
     }
 
     if (!parseEOF())
     {
         notifyError(m_LineNo, m_Column, "Unexpected trailing data");
-        return false;
+        return m_ContinueOnError;
     }
 
     return true;
@@ -354,7 +361,10 @@ void Expressions::notifyElement(const QString& type, const QVariant& value)
 
 void Expressions::notifyError(int lineNo, int column, const QString& message)
 {
-    qDebug() << Q_FUNC_INFO << lineNo << column << message;
+    if (m_Abort)
+    {
+        return;
+    }
 
     QVariantMap item;
     item["lineNo"] = lineNo;
@@ -364,6 +374,11 @@ void Expressions::notifyError(int lineNo, int column, const QString& message)
 
     emit errorsChanged();
     emit error(lineNo, column, message);
+
+    if (m_AbortOnError)
+    {
+        m_Abort = true;
+    }
 }
 
 //----------------------------------------------------------------------

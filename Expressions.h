@@ -37,6 +37,8 @@ class Expressions : public QObject
 
     Q_PROPERTY(QVariant values READ values NOTIFY valuesChanged)
     Q_PROPERTY(QVariant errors READ errors NOTIFY errorsChanged)
+    Q_PROPERTY(bool abortOnError MEMBER m_AbortOnError NOTIFY abortOnErrorChanged)
+    Q_PROPERTY(bool continueOnError MEMBER m_ContinueOnError NOTIFY continueOnErrorChanged)
 
 public:
     Expressions(QObject* parent = nullptr);
@@ -46,6 +48,8 @@ public:
 signals:
     void valuesChanged();
     void errorsChanged();
+    void abortOnErrorChanged();
+    void continueOnErrorChanged();
     void error(int lineNo, int column, const QString& message);
     void element(const QString type, const QVariant value);
 
@@ -77,6 +81,9 @@ protected:
     int m_DeviceColumn;
     int m_LineNo;
     int m_Column;
+    bool m_Abort;
+    bool m_AbortOnError;
+    bool m_ContinueOnError;
     QStack<ExpressionChar> m_Stack;
     QVariantList m_Elements;
     QVariantList m_Errors;
