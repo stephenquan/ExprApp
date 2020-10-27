@@ -177,14 +177,14 @@ Window {
 
     Expressions {
         id: expressions
-
-        abortOnError: abortOnErrorCheckBox.checked
-        continueOnError: continueOnErrorCheckBox.checked
     }
 
     Component.onCompleted: parse()
 
     function parse() {
+        expressions.abortOnError = abortOnErrorCheckBox.checked;
+        expressions.continueOnError = continueOnErrorCheckBox.checked;
+
         resultText.text = "";
         errorsText.text = "";
 
